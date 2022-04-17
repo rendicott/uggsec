@@ -97,7 +97,6 @@ func InitKeyring(i *VaultInput) (*Vault, error) {
 			// create new file by writing nothing to it
 			err = v.Write("")
 		}
-		return &v, err
 	}
 	return &v, err
 }
@@ -112,6 +111,16 @@ func InitEnvVar(i *VaultInput) (*Vault, error) {
 		passwordEnvVar: i.PasswordEnvVar,
 	}
 	_, err = v.getPassword()
+	if err != nil {
+		return &v, err
+	}
+	_, err = v.loadFromDisk()
+	if err != nil {
+		if strings.Contains(err.Error(), "system cannot find the file specified") {
+			// create new file by writing nothing to it
+			err = v.Write("")
+		}
+	}
 	return &v, err
 }
 
