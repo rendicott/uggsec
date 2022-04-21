@@ -8,6 +8,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"github.com/zalando/go-keyring"
+	"github.com/inconshreveable/log15"
 	"fmt"
 	"io/ioutil"
 	"errors"
@@ -93,12 +94,26 @@ func InitKeyring(i *VaultInput) (*Vault, error) {
 	// now try to load file
 	_, err = v.loadFromDisk()
 	if err != nil {
-		if strings.Contains(err.Error(), "system cannot find the file specified") {
+		log("Debug", "InitKeyring(), error loading file from disk", "error", err.Error())
+		if detectFileNotFoundError(err) {
 			// create new file by writing nothing to it
+			log("Debug", "InitKeyring(), attempting to create blank file")
 			err = v.Write("")
 		}
 	}
 	return &v, err
+}
+
+// looks for common "file not found" type error messages across
+// different systems
+func detectFileNotFoundError(err error) (bool) {
+	if strings.Contains(err.Error(), "system cannot find the file specified") {
+		return true
+	}
+	if strings.Contains(err.Error(), "no such file or directory") {
+		return true
+	}
+	return false
 }
 
 // InitEnvVar initializes a new or existing vault using the password stored
@@ -116,8 +131,10 @@ func InitEnvVar(i *VaultInput) (*Vault, error) {
 	}
 	_, err = v.loadFromDisk()
 	if err != nil {
-		if strings.Contains(err.Error(), "system cannot find the file specified") {
+		log("Debug", "InitEnvVar(), error loading file from disk", "error", err.Error())
+		if detectFileNotFoundError(err) {
 			// create new file by writing nothing to it
+			log("Debug", "InitEnvVar(), attempting to create blank file")
 			err = v.Write("")
 		}
 	}
@@ -140,15 +157,18 @@ func NewVaultPassword() (string) {
 // encounters. It overrides the entire contents of the file.
 // If no file exists then one is created.
 func (v *Vault) Write(contents string) (err error) {
+	log("Debug", "Write(), getting password...")
 	password, err := v.getPassword()
 	if err != nil {
 		return err
 	}
+	log("Debug", "Write(), encryping message...")
 	encrypted, err := encrypt(contents, password)
 	if err != nil {
 		return err
 	}
 	b := []byte(encrypted)
+	log("Debug", "Write(), writing file...")
 	err = ioutil.WriteFile(v.filename, b, 0600)
 	return err
 }
@@ -245,5 +265,23 @@ func randStringRunes(n int) string {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return string(b)
+}
+
+// Loggo is the global logger. Set this to a log15
+// logger from your main to incorporate into main
+// logfile. Otherwise log messages are discarded
+var Loggo log15.Logger
+
+func log(lev, msg string, ltx ...interface{}) {
+	if Loggo != nil {
+		switch lev {
+		case "Info":
+			Loggo.Info(msg, ltx...)
+		case "Error":
+			Loggo.Error(msg, ltx...)
+		case "Debug":
+			Loggo.Debug(msg, ltx...)
+		}
+	}
 }
 
